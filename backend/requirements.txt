@@ -6,3 +6,4 @@ langgraph
 playwright
 python-dotenv
 pydantic
+pytest

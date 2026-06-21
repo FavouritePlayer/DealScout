@@ -47,7 +47,7 @@ def main() -> None:
     print("    writing to HydraDB and waiting for it to become queryable (~12-17s)...")
     start = time.monotonic()
     fb = _feedback("I don't like blue chairs")
-    print(f"    done in {time.monotonic() - start:.1f}s — stored: {fb['memory_text']!r}")
+    print(f"    done in {time.monotonic() - start:.1f}s — preference_added: {fb['preference_added']!r}")
 
     print("\n[3] Searching again, same query, no preference re-stated...")
     result = _search("Find me a chair")

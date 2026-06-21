@@ -77,3 +77,21 @@ class HydraMemoryClient:
         )
         chunks = result.data.chunks or []
         return "\n".join(c.chunk_content for c in chunks)
+
+    def forget_all(self, user_id: str) -> int:
+        """Delete every stored memory for a user (used by 'New Session').
+
+        context.delete() requires explicit ids — there's no bulk
+        delete-by-sub_tenant call — so this lists the user's memory ids
+        first, then deletes by id.
+        """
+        listing = self.client.context.list(
+            tenant_id=self.tenant_id, sub_tenant_id=user_id, type="memory"
+        )
+        ids = [m["memory_id"] for m in listing.data.user_memories]
+        if not ids:
+            return 0
+        self.client.context.delete(
+            tenant_id=self.tenant_id, sub_tenant_id=user_id, type="memory", ids=ids
+        )
+        return len(ids)

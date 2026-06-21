@@ -132,31 +132,39 @@ This is slow enough that it **will** be visible in a live demo. Mitigation, in o
 
 ## API Contract
 
-This is the actual shape implemented in `backend/app.py` — HydraDB returns raw recalled text, not structured `{key, value, polarity}` rows, so don't build the frontend expecting that shape:
+This is the actual shape implemented in `backend/app.py`, reconciled with the frontend's existing `frontend/lib/types.ts`. HydraDB itself returns raw recalled text, not structured rows — `backend/memory/preference_parser.py` is a thin heuristic adapter at the API boundary that converts that raw text into the `{key, value, polarity}` shape the frontend already expects, so no frontend changes were needed to integrate:
 
 ```
 POST /api/search
 Request:  { "user_id": string, "query": string }
 Response: {
   "results": [
-    { "id": string, "title": string, "price": number, "color": string,
-      "image": string, "url": string }
+    { "id": string, "title": string, "price": number, "category": string, "color": string,
+      "image": string, "url": string, "description"?: string, "location"?: string,
+      "posted_at"?: string, "attributes"?: object }
   ],
-  "explanation": string,   // e.g. "Excluded blue chairs based on your preference."
-  "memory_used": string    // raw recalled memory text, "" if none stored yet
+  "explanation": string,                 // e.g. "Excluded blue chairs based on your preference."
+  "memory_used": [ { "key": "color", "value": "blue", "polarity": "avoid" } ]
 }
 
 POST /api/feedback
 Request:  { "user_id": string, "category": string, "note": string }
             // note = raw text, e.g. "I don't like blue chairs"
-Response: { "ok": true, "memory_text": string }   // echoes back what was stored
+Response: { "ok": true, "preference_added": { "key": "color", "value": "blue", "polarity": "avoid" } | null }
             // backend ingests into HydraDB AND polls indexing to completion
             // before responding — takes ~12-17s, see latency note above.
             // frontend just awaits this call, no separate polling
 
 GET /api/preferences/:user_id
-Response: { "preferences": string }   // raw recalled text, drives the live Memory Panel
+Response: { "preferences": [ { "key": "color", "value": "blue", "polarity": "avoid" }, ... ] }
+
+DELETE /api/preferences/:user_id
+Response: { "ok": true }
+            // wipes all stored memories for this user in HydraDB (list-then-delete-by-id,
+            // since HydraDB has no bulk delete-by-user call) — used by "New Session"
 ```
+
+**Scope note:** `preference_parser.py` only extracts color preferences with "avoid" polarity (matching what `frontend/lib/mockStore.ts`'s `parsePreferenceFromNote` already handled) — this is intentionally narrow to the chair-color demo, not a general preference extractor.
 
 ---
 
@@ -199,13 +207,13 @@ If you're unsure whether to spend remaining time on a P1 item or start polishing
 
 ## Note to Person B (from Person A)
 
-A few things worth knowing before you start on the frontend/fixture side:
+**Update: backend integration is done.** The frontend's existing mock contract (`frontend/lib/types.ts`, `frontend/lib/mockStore.ts`) is now exactly what the real backend returns — `backend/memory/preference_parser.py` was added specifically to match your `Preference {key, value, polarity}` shape and `parsePreferenceFromNote` logic, so no frontend changes should be needed to swap from mocks to the real API. `backend/app.py` now also reads your real `backend/data/chairs_fixture.json` via `playwright_loader.load_listings("chair")` instead of a placeholder, and a `DELETE /api/preferences/:user_id` endpoint was added to back your "New Session" button (it actually clears HydraDB memory now, not just local mock state).
 
-- **Don't wait on the backend.** Build the UI against the API contract above using a local mock (a couple of Next.js API routes returning fake data is enough) so you're never blocked on me finishing HydraDB/LangGraph integration. Swap the mock for the real `/api/*` calls at the integration checkpoint.
-- **The `/api/feedback` call is NOT fast — budget for ~12–17 seconds.** This is measured against the live HydraDB API, not a guess: the backend has to poll until indexing completes before it can respond, and that consistently takes 12–17s regardless of how many memories the user already has. Build the feedback box around this from the start — a real "remembering..." loading state, not a spinner that's only there "just in case." The demo script needs to account for this pause explicitly (see README's HydraDB Data Model section for the planned mitigation), so don't treat it as something to optimize away.
-- **Color is the whole demo** — make sure every fixture listing has a clear `color` field and that it's visually obvious on the card (not just in text), since the entire judging moment is "blue chairs visibly disappear."
-- **The Memory Panel matters more than visual polish.** If you're short on time, a plain list of `GET /api/preferences/:user_id` results that updates after feedback is submitted is worth more than a nicer-looking results grid.
-- **Playwright is just a fixture loader here** — a thin wrapper that reads `chairs_fixture.json` and returns it is enough to satisfy the stack requirement. Don't spend any time on a real scraper.
+To switch the frontend from mocks to the real backend: point `frontend/lib/api.ts`'s `fetch()` calls at the running FastAPI server (`http://localhost:8000` by default) instead of the local Next.js API routes, or proxy through them — either works since the JSON shapes already match.
+
+Things still worth knowing:
+- **The `/api/feedback` call is NOT fast — budget for ~12–17 seconds**, confirmed against the live HydraDB API. Your mock already simulates this with a 900ms delay; the real one is ~15x slower, so re-test the loading state against the real backend before the final rehearsal.
+- **Playwright is just a fixture loader here**, exactly as you built it — no real scraping needed for the submission. (Separately, on request, a one-off live Playwright scrape against Craigslist was built in `backend/dev/scrape_demo.py` just to prove it's possible — it's not wired into the app and doesn't affect your fixture-based plan.)
 
 ---
 
