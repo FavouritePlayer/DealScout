@@ -53,6 +53,17 @@ export default function QueueCard({ item, onReject, onAccept, busy }: Props) {
 
   return (
     <article className="bg-white rounded-2xl border border-[var(--border)] shadow-sm hover:shadow-md transition flex flex-col overflow-hidden">
+      {item.image ? (
+        <div className="w-full h-40 bg-neutral-100 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.image}
+            alt={item.title}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      ) : null}
+
       <div className="px-5 pt-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span
@@ -78,6 +89,16 @@ export default function QueueCard({ item, onReject, onAccept, busy }: Props) {
           <p className="text-xs text-[var(--muted)] mt-1.5 line-clamp-2">
             {item.description}
           </p>
+        )}
+        {item.url && (
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900 mt-1.5"
+          >
+            View listing ↗
+          </a>
         )}
       </div>
 

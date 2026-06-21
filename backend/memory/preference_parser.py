@@ -31,7 +31,11 @@ def _extract(text: str, vocab: list[str], key: str) -> list[dict]:
         if not _AVOID_PATTERN.search(window):
             continue
         seen.add(term)
-        preferences.append({"key": key, "value": term.replace(" ", "_"), "polarity": "avoid"})
+        # category values use underscores in the canonical vocab (e.g.
+        # "sporting_goods"); condition values keep their space (e.g.
+        # "like new") since that's how Listing.condition is actually stored.
+        value = term.replace(" ", "_") if key == "category" else term
+        preferences.append({"key": key, "value": value, "polarity": "avoid"})
     return preferences
 
 

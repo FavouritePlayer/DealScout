@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { buildQueue } from "@/lib/mockStore";
+
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function POST(req: Request) {
-  const { user_id } = (await req.json()) as { user_id: string };
-  return NextResponse.json(buildQueue(user_id));
+  const body = await req.text();
+  const res = await fetch(`${BACKEND_URL}/api/scan`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+  return NextResponse.json(await res.json(), { status: res.status });
 }

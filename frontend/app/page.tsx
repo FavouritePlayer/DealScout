@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import QueueGrid from "./components/QueueGrid";
+import CarouselView from "./components/CarouselView";
 import RejectDialog from "./components/RejectDialog";
 import MemoryPanel from "./components/MemoryPanel";
 import * as api from "@/lib/api";
@@ -17,6 +18,7 @@ export default function HomePage() {
   const [scanning, setScanning] = useState(false);
   const [rejecting, setRejecting] = useState<QueueItem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"gallery" | "carousel">("gallery");
 
   const refreshPreferences = useCallback(async () => {
     const { preferences } = await api.getPreferences(USER_ID);
@@ -52,11 +54,23 @@ export default function HomePage() {
 
   const handleRejectSubmit = useCallback(
     async (item: QueueItem, note: string) => {
-      await api.reject(USER_ID, item.id, note);
+      const fb = await api.reject(USER_ID, item.id, note);
       await refreshPreferences();
-      await doScan();
+
+      // Don't re-scan here — a rescan re-scrapes live listings and would
+      // replace the entire queue with a fresh, unrelated batch, making it
+      // look like everything just vanished. Instead, filter the *current*
+      // queue down to whatever the new avoid-rule actually matches, so
+      // unrelated previously-scraped items stay put.
+      const pref = fb.preference_added;
+      if (pref && pref.polarity === "avoid") {
+        const key = pref.key as "category" | "condition";
+        setQueue((current) => current.filter((q) => q[key] !== pref.value));
+      } else {
+        setQueue((current) => current.filter((q) => q.id !== item.id));
+      }
     },
-    [doScan, refreshPreferences]
+    [refreshPreferences]
   );
 
   const handleRescan = useCallback(async () => {
@@ -97,6 +111,28 @@ export default function HomePage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center bg-neutral-100 rounded-full p-1">
+                <button
+                  onClick={() => setView("gallery")}
+                  className={`text-sm font-semibold rounded-full px-3.5 py-1.5 transition ${
+                    view === "gallery"
+                      ? "bg-white shadow-sm text-black"
+                      : "text-[var(--muted)] hover:text-black"
+                  }`}
+                >
+                  Gallery
+                </button>
+                <button
+                  onClick={() => setView("carousel")}
+                  className={`text-sm font-semibold rounded-full px-3.5 py-1.5 transition ${
+                    view === "carousel"
+                      ? "bg-white shadow-sm text-black"
+                      : "text-[var(--muted)] hover:text-black"
+                  }`}
+                >
+                  Carousel
+                </button>
+              </div>
               <button
                 onClick={doScan}
                 disabled={scanning}
@@ -127,14 +163,25 @@ export default function HomePage() {
 
           <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 p-10">
             <div className="flex flex-col gap-6">
-              <QueueGrid
-                items={queue}
-                explanation={explanation}
-                loading={scanning}
-                onReject={handleReject}
-                onAccept={handleAccept}
-                busy={busy}
-              />
+              {view === "gallery" ? (
+                <QueueGrid
+                  items={queue}
+                  explanation={explanation}
+                  loading={scanning}
+                  onReject={handleReject}
+                  onAccept={handleAccept}
+                  busy={busy}
+                />
+              ) : (
+                <CarouselView
+                  items={queue}
+                  explanation={explanation}
+                  loading={scanning}
+                  onReject={handleReject}
+                  onAccept={handleAccept}
+                  busy={busy}
+                />
+              )}
             </div>
 
             <div className="flex flex-col gap-6">

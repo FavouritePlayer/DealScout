@@ -51,12 +51,19 @@ def main() -> None:
     _print_queue("Queue:", result["queue"])
     print(f"Explanation: {result['explanation']}")
 
-    furniture_item = next(item for item in result["queue"] if item["category"] == "furniture")
-    note = "I don't deal with furniture, it's too much hassle to move."
-    print(f'\n[2] Rejecting "{furniture_item["title"]}" with reason: "{note}"')
+    if not result["queue"]:
+        print("\nNo undervalued flips in this scan — nothing to reject. Run again later.")
+        return
+
+    # Live data varies scan to scan, so reject whatever category actually
+    # showed up rather than assuming a fixed one like "furniture".
+    target = result["queue"][0]
+    category = target["category"]
+    note = f"I don't deal with {category.replace('_', ' ')}, it's too much hassle for me."
+    print(f'\n[2] Rejecting "{target["title"]}" with reason: "{note}"')
     print("    writing to HydraDB and waiting for it to become queryable (~12-17s)...")
     start = time.monotonic()
-    fb = _feedback(furniture_item["id"], note)
+    fb = _feedback(target["id"], note)
     print(f"    done in {time.monotonic() - start:.1f}s — preference_added: {fb['preference_added']!r}")
 
     print("\n[3] Rescanning, no preference re-stated...")
@@ -64,8 +71,8 @@ def main() -> None:
     _print_queue("Queue:", result["queue"])
     print(f"Explanation: {result['explanation']}")
 
-    furniture_still_present = any(item["category"] == "furniture" for item in result["queue"])
-    verdict = "FAIL: furniture still present" if furniture_still_present else "PASS: furniture excluded"
+    category_still_present = any(item["category"] == category for item in result["queue"])
+    verdict = f"FAIL: {category} still present" if category_still_present else f"PASS: {category} excluded"
     print(f"\n=== {verdict} ===")
 
 

@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { clearPreferences, getPublicPreferences } from "@/lib/mockStore";
+
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ user_id: string }> }
 ) {
   const { user_id } = await params;
-  return NextResponse.json({ preferences: getPublicPreferences(user_id) });
+  const res = await fetch(`${BACKEND_URL}/api/preferences/${user_id}`, {
+    cache: "no-store",
+  });
+  return NextResponse.json(await res.json(), { status: res.status });
 }
 
 export async function DELETE(
@@ -14,6 +18,8 @@ export async function DELETE(
   { params }: { params: Promise<{ user_id: string }> }
 ) {
   const { user_id } = await params;
-  clearPreferences(user_id);
-  return NextResponse.json({ ok: true });
+  const res = await fetch(`${BACKEND_URL}/api/preferences/${user_id}`, {
+    method: "DELETE",
+  });
+  return NextResponse.json(await res.json(), { status: res.status });
 }
