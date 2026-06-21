@@ -1,11 +1,24 @@
 "use client";
 
+export type Section = "queue" | "memory" | "history" | "saved";
+
 type Props = {
   preferenceCount: number;
+  savedCount: number;
+  historyCount: number;
+  activeSection: Section;
+  onNavigate: (section: Section) => void;
   onNewSession: () => void;
 };
 
-export default function Sidebar({ preferenceCount, onNewSession }: Props) {
+export default function Sidebar({
+  preferenceCount,
+  savedCount,
+  historyCount,
+  activeSection,
+  onNavigate,
+  onNewSession,
+}: Props) {
   return (
     <aside className="w-[240px] shrink-0 border-r border-[var(--border)] flex flex-col p-6 gap-8 bg-white">
       <div className="flex items-center gap-3">
@@ -27,14 +40,33 @@ export default function Sidebar({ preferenceCount, onNewSession }: Props) {
         <div className="text-[11px] font-semibold tracking-[0.12em] text-[var(--muted)] uppercase px-3 mb-2">
           Menu
         </div>
-        <NavItem active label="Flip queue" icon={<SearchIcon />} />
         <NavItem
+          active={activeSection === "queue"}
+          label="Flip queue"
+          icon={<SearchIcon />}
+          onClick={() => onNavigate("queue")}
+        />
+        <NavItem
+          active={activeSection === "memory"}
           label="Memory"
           icon={<BrainIcon />}
           badge={preferenceCount > 0 ? preferenceCount : undefined}
+          onClick={() => onNavigate("memory")}
         />
-        <NavItem label="History" icon={<ClockIcon />} />
-        <NavItem label="Saved flips" icon={<GridIcon />} />
+        <NavItem
+          active={activeSection === "history"}
+          label="History"
+          icon={<ClockIcon />}
+          badge={historyCount > 0 ? historyCount : undefined}
+          onClick={() => onNavigate("history")}
+        />
+        <NavItem
+          active={activeSection === "saved"}
+          label="Saved flips"
+          icon={<GridIcon />}
+          badge={savedCount > 0 ? savedCount : undefined}
+          onClick={() => onNavigate("saved")}
+        />
       </nav>
 
       <nav className="flex flex-col gap-1">
@@ -71,15 +103,19 @@ function NavItem({
   icon,
   active = false,
   badge,
+  onClick,
 }: {
   label: string;
   icon: React.ReactNode;
   active?: boolean;
   badge?: number;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-full cursor-pointer transition ${
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-full cursor-pointer transition ${
         active
           ? "bg-black text-white"
           : "text-neutral-700 hover:bg-neutral-100"
@@ -96,7 +132,7 @@ function NavItem({
           {badge}
         </span>
       )}
-    </div>
+    </button>
   );
 }
 

@@ -12,13 +12,43 @@ frontend's own mock store and Person B's tests, which is a separate concern
 from what data actually flows through the backend.
 """
 import json
+import logging
+import os
 import re
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 from backend.graph.llm import complete_with_retry
 
+logger = logging.getLogger(__name__)
+
 CRAIGSLIST_BASE = "https://sfbay.craigslist.org"
+
+_DEFAULT_PLAYWRIGHT_CACHE = Path.home() / "Library/Caches/ms-playwright"
+
+
+def _ensure_playwright_browsers_path() -> None:
+    """Point Playwright at the real browser cache when Cursor's sandbox
+    override points at an empty temp dir (the recurring scrape failure)."""
+    current = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+    if current and Path(current).exists():
+        return
+    if _DEFAULT_PLAYWRIGHT_CACHE.exists():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_DEFAULT_PLAYWRIGHT_CACHE)
+
+
+def _launch(p):
+    """Launch Chromium, honoring demo-visibility env vars.
+
+    PLAYWRIGHT_HEADED=1 shows the real browser window so a live demo can
+    watch the scrape happen; PLAYWRIGHT_SLOW_MO=<ms> paces each action so
+    it's watchable. Defaults stay headless/fast for reliability.
+    """
+    _ensure_playwright_browsers_path()
+    headed = os.environ.get("PLAYWRIGHT_HEADED", "").strip().lower() in ("1", "true", "yes", "on")
+    slow_mo = float(os.environ.get("PLAYWRIGHT_SLOW_MO", "0") or 0)
+    return p.chromium.launch(headless=not headed, slow_mo=slow_mo)
 
 # Verified live against Craigslist's current section codes (2026-06-21).
 CATEGORY_CODES = {
@@ -89,13 +119,14 @@ def _scrape_category(page, category: str, code: str) -> list[dict]:
 def _scrape_all_categories() -> list[dict]:
     listings = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch(p)
         page = browser.new_page()
         for category, code in CATEGORY_CODES.items():
             try:
                 listings.extend(_scrape_category(page, category, code))
-            except Exception:
-                continue  # one category failing shouldn't sink the whole scan
+            except Exception as exc:
+                logger.warning("scrape failed for %s (%s): %s", category, code, exc)
+                continue
         browser.close()
     return listings
 
@@ -183,7 +214,7 @@ def attach_images(items: list[dict]) -> list[dict]:
     if not items:
         return items
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch(p)
         page = browser.new_page()
         for item in items:
             if not item.get("url"):

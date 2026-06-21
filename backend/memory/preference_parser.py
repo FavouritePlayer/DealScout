@@ -43,3 +43,21 @@ def parse_preferences(text: str) -> list[dict]:
     if not text:
         return []
     return _extract(text, _CATEGORIES, "category") + _extract(text, _CONDITIONS, "condition")
+
+
+def preference_to_text(pref: dict) -> str:
+    """Turn a structured {key, value, polarity} back into natural language
+    for HydraDB ingest — mirrors what a rejection reason would look like."""
+    key, value, polarity = pref["key"], pref["value"], pref["polarity"]
+    label = value.replace("_", " ")
+    if key == "category":
+        if polarity == "avoid":
+            return f"User doesn't want to deal with {label}."
+        return f"User prefers to flip {label}."
+    if key == "condition":
+        if polarity == "avoid":
+            return f"User avoids items in {label} condition."
+        return f"User prefers {label} condition items."
+    if polarity == "avoid":
+        return f"User wants to avoid {label}."
+    return f"User prefers {label}."

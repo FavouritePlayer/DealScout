@@ -39,12 +39,21 @@ const CONDITION_DOT: Record<string, string> = {
 
 type Props = {
   item: QueueItem;
-  onReject: (item: QueueItem) => void;
-  onAccept: (item: QueueItem) => void;
+  onReject?: (item: QueueItem) => void;
+  onAccept?: (item: QueueItem) => void;
+  onRemove?: (item: QueueItem) => void;
   busy?: boolean;
+  mode?: "queue" | "saved";
 };
 
-export default function QueueCard({ item, onReject, onAccept, busy }: Props) {
+export default function QueueCard({
+  item,
+  onReject,
+  onAccept,
+  onRemove,
+  busy,
+  mode = "queue",
+}: Props) {
   const catLabel = CATEGORY_LABEL[item.category] ?? item.category;
   const accent =
     CATEGORY_ACCENT[item.category] ??
@@ -125,20 +134,44 @@ export default function QueueCard({ item, onReject, onAccept, busy }: Props) {
       </div>
 
       <div className="px-5 pb-5 flex gap-2 mt-auto">
-        <button
-          onClick={() => onReject(item)}
-          disabled={busy}
-          className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-white border border-[var(--border)] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 transition"
-        >
-          Reject
-        </button>
-        <button
-          onClick={() => onAccept(item)}
-          disabled={busy}
-          className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-black text-white hover:bg-neutral-800 disabled:opacity-50 transition"
-        >
-          Add to queue
-        </button>
+        {mode === "saved" ? (
+          <>
+            {item.url && (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-center text-sm font-semibold rounded-full px-4 py-2.5 bg-black text-white hover:bg-neutral-800 transition"
+              >
+                View listing ↗
+              </a>
+            )}
+            <button
+              onClick={() => onRemove?.(item)}
+              disabled={busy}
+              className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-white border border-[var(--border)] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 transition"
+            >
+              Remove
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => onReject?.(item)}
+              disabled={busy}
+              className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-white border border-[var(--border)] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 transition"
+            >
+              Reject
+            </button>
+            <button
+              onClick={() => onAccept?.(item)}
+              disabled={busy}
+              className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-black text-white hover:bg-neutral-800 disabled:opacity-50 transition"
+            >
+              Save flip
+            </button>
+          </>
+        )}
       </div>
     </article>
   );

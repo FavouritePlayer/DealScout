@@ -81,6 +81,30 @@ class HydraMemoryClient:
         chunks = result.data.chunks or []
         return "\n".join(c.chunk_content for c in chunks)
 
+    def replace_preferences(self, user_id: str, texts: list[str]) -> None:
+        """Replace a user's entire preference set with a fresh batch ingest.
+
+        Clears existing memories first, then ingests all texts in one call
+        so indexing is polled once rather than once per rule (~15s total).
+        """
+        self.forget_all(user_id)
+        if not texts:
+            return
+        resp = self.client.context.ingest(
+            type="memory",
+            tenant_id=self.tenant_id,
+            sub_tenant_id=user_id,
+            upsert=True,
+            memories=json.dumps([{
+                "text": text,
+                "infer": True,
+                "user_name": user_id,
+                "metadata": {},
+            } for text in texts]),
+        )
+        job_ids = [r.id for r in resp.data.results]
+        self._wait_for_indexing(user_id, job_ids, poll_timeout_s=30.0)
+
     def forget_all(self, user_id: str) -> int:
         """Delete every stored memory for a user (used by 'New Session').
 

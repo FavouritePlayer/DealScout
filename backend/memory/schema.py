@@ -53,3 +53,7 @@ class FeedbackResponse(BaseModel):
 
 class PreferencesResponse(BaseModel):
     preferences: list[Preference]
+
+
+class SetPreferencesRequest(BaseModel):
+    preferences: list[Preference]

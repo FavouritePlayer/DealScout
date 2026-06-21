@@ -23,3 +23,17 @@ export async function DELETE(
   });
   return NextResponse.json(await res.json(), { status: res.status });
 }
+
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ user_id: string }> }
+) {
+  const { user_id } = await params;
+  const body = await req.text();
+  const res = await fetch(`${BACKEND_URL}/api/preferences/${user_id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+  return NextResponse.json(await res.json(), { status: res.status });
+}

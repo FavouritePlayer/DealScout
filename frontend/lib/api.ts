@@ -1,5 +1,7 @@
 import type {
   FeedbackResponse,
+  HistoryEntry,
+  Preference,
   PreferencesResponse,
   ScanResponse,
 } from "./types";
@@ -10,8 +12,15 @@ export async function scan(userId: string): Promise<ScanResponse> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ user_id: userId }),
   });
-  if (!res.ok) throw new Error(`scan failed: ${res.status}`);
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      typeof data.error === "string"
+        ? data.error
+        : `scan failed: ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
 }
 
 export async function reject(
@@ -61,8 +70,23 @@ export async function getPreferences(
   return res.json();
 }
 
+export async function updatePreferences(
+  userId: string,
+  preferences: Preference[]
+): Promise<PreferencesResponse> {
+  const res = await fetch(`/api/preferences/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ preferences }),
+  });
+  if (!res.ok) throw new Error(`update preferences failed: ${res.status}`);
+  return res.json();
+}
+
 export async function clearSession(userId: string): Promise<void> {
   await fetch(`/api/preferences/${encodeURIComponent(userId)}`, {
     method: "DELETE",
   });
 }
+
+export type { HistoryEntry, Preference };

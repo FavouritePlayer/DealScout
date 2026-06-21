@@ -42,6 +42,18 @@ export type Preference = {
   polarity: "avoid" | "prefer";
 };
 
+export type HistoryEntry = {
+  id: string;
+  type: "scan" | "reject" | "save" | "rescan" | "memory_update";
+  timestamp: string;
+  title: string;
+  detail?: string;
+};
+
+export type SetPreferencesRequest = {
+  preferences: Preference[];
+};
+
 export type ScanResponse = {
   queue: QueueItem[];
   explanation: string;

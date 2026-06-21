@@ -158,7 +158,7 @@ export default function CarouselView({
               disabled={busy}
               className="flex-1 text-sm font-semibold rounded-full px-4 py-2.5 bg-black text-white hover:bg-neutral-800 disabled:opacity-50 transition"
             >
-              Add to queue
+              Save flip
             </button>
           </div>
         </div>
