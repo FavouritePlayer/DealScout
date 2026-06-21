@@ -3,5 +3,6 @@ uvicorn[standard]
 hydradb-sdk>=2,<3
 openai
 langgraph
+playwright
 python-dotenv
 pydantic
