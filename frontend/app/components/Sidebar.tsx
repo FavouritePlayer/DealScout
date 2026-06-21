@@ -27,14 +27,14 @@ export default function Sidebar({ preferenceCount, onNewSession }: Props) {
         <div className="text-[11px] font-semibold tracking-[0.12em] text-[var(--muted)] uppercase px-3 mb-2">
           Menu
         </div>
-        <NavItem active label="Search" icon={<SearchIcon />} />
+        <NavItem active label="Flip queue" icon={<SearchIcon />} />
         <NavItem
           label="Memory"
           icon={<BrainIcon />}
           badge={preferenceCount > 0 ? preferenceCount : undefined}
         />
         <NavItem label="History" icon={<ClockIcon />} />
-        <NavItem label="Categories" icon={<GridIcon />} />
+        <NavItem label="Saved flips" icon={<GridIcon />} />
       </nav>
 
       <nav className="flex flex-col gap-1">
@@ -50,7 +50,7 @@ export default function Sidebar({ preferenceCount, onNewSession }: Props) {
           onClick={onNewSession}
           className="w-full text-sm font-medium bg-black text-white rounded-full px-4 py-2.5 hover:bg-neutral-800 transition"
         >
-          + New session
+          Rescan from scratch
         </button>
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-neutral-50 border border-[var(--border)]">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-300 to-amber-300" />

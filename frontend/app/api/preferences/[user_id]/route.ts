@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { clearPreferences, getPreferences } from "@/lib/mockStore";
+import { clearPreferences, getPublicPreferences } from "@/lib/mockStore";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ user_id: string }> }
 ) {
   const { user_id } = await params;
-  return NextResponse.json({ preferences: getPreferences(user_id) });
+  return NextResponse.json({ preferences: getPublicPreferences(user_id) });
 }
 
 export async function DELETE(

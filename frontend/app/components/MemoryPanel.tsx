@@ -1,17 +1,38 @@
 import type { Preference } from "@/lib/types";
 
-const COLOR_DOT: Record<string, string> = {
-  blue: "bg-blue-500",
-  black: "bg-neutral-900",
-  green: "bg-emerald-500",
-  red: "bg-red-500",
-  brown: "bg-amber-800",
-  grey: "bg-slate-400",
-  white: "bg-white border border-[var(--border)]",
-  beige: "bg-amber-200",
+const CATEGORY_LABEL: Record<string, string> = {
+  furniture: "Furniture",
+  electronics: "Electronics",
+  tools: "Tools",
+  collectibles: "Collectibles",
+  sporting_goods: "Sporting goods",
+  appliances: "Appliances",
+  instruments: "Instruments",
+  clothing: "Clothing",
+  toys: "Toys",
+  books: "Books",
+  other: "Other",
 };
 
-export default function MemoryPanel({ preferences }: { preferences: Preference[] }) {
+const CATEGORY_ACCENT: Record<string, string> = {
+  furniture: "bg-amber-100 text-amber-800",
+  electronics: "bg-sky-100 text-sky-800",
+  tools: "bg-orange-100 text-orange-800",
+  collectibles: "bg-violet-100 text-violet-800",
+  sporting_goods: "bg-emerald-100 text-emerald-800",
+  appliances: "bg-rose-100 text-rose-800",
+  instruments: "bg-fuchsia-100 text-fuchsia-800",
+  clothing: "bg-pink-100 text-pink-800",
+  toys: "bg-yellow-100 text-yellow-800",
+  books: "bg-indigo-100 text-indigo-800",
+  other: "bg-neutral-100 text-neutral-800",
+};
+
+export default function MemoryPanel({
+  preferences,
+}: {
+  preferences: Preference[];
+}) {
   return (
     <section className="bg-white rounded-3xl border border-[var(--border)] shadow-sm p-6 sticky top-6">
       <header className="flex items-center justify-between mb-4">
@@ -32,42 +53,48 @@ export default function MemoryPanel({ preferences }: { preferences: Preference[]
             No preferences saved yet.
           </p>
           <p className="text-xs text-[var(--muted)] mt-1">
-            Try saying <span className="italic">&ldquo;I don&rsquo;t like blue chairs&rdquo;</span>.
+            Reject a card and tell DealScout why — it&rsquo;ll remember.
           </p>
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
-          {preferences.map((p, i) => (
-            <li
-              key={`${p.key}-${p.value}-${i}`}
-              className="flex items-center gap-3 bg-neutral-50 border border-[var(--border)] rounded-2xl px-4 py-3"
-            >
-              {p.key === "color" && (
-                <span
-                  className={`w-4 h-4 rounded-full shrink-0 ${
-                    COLOR_DOT[p.value] ?? "bg-neutral-300"
-                  }`}
-                />
-              )}
-              <div className="flex-1">
-                <div className="text-sm font-semibold capitalize">
-                  {p.polarity === "avoid" ? "Avoid" : "Prefer"} {p.value}
-                </div>
-                <div className="text-xs text-[var(--muted)] capitalize">
-                  {p.key}
-                </div>
-              </div>
-              <span
-                className={`text-[10px] uppercase tracking-wider font-bold rounded-full px-2 py-1 ${
-                  p.polarity === "avoid"
-                    ? "bg-red-50 text-red-700"
-                    : "bg-emerald-50 text-emerald-700"
-                }`}
+          {preferences.map((p, i) => {
+            const label =
+              p.key === "category"
+                ? CATEGORY_LABEL[p.value] ?? p.value
+                : p.value;
+            const accent =
+              p.key === "category"
+                ? CATEGORY_ACCENT[p.value] ??
+                  "bg-neutral-100 text-neutral-800"
+                : "bg-neutral-100 text-neutral-800";
+            return (
+              <li
+                key={`${p.key}-${p.value}-${i}`}
+                className="flex items-center gap-3 bg-neutral-50 border border-[var(--border)] rounded-2xl px-4 py-3"
               >
-                {p.polarity}
-              </span>
-            </li>
-          ))}
+                <span
+                  className={`text-[10px] uppercase tracking-wider font-bold rounded-full px-2 py-1 ${accent}`}
+                >
+                  {p.key}
+                </span>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold capitalize">
+                    {p.polarity === "avoid" ? "Avoid" : "Prefer"} {label}
+                  </div>
+                </div>
+                <span
+                  className={`text-[10px] uppercase tracking-wider font-bold rounded-full px-2 py-1 ${
+                    p.polarity === "avoid"
+                      ? "bg-red-50 text-red-700"
+                      : "bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {p.polarity}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

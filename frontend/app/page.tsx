@@ -2,112 +2,122 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
-import SearchBar from "./components/SearchBar";
-import ResultsGrid from "./components/ResultsGrid";
-import FeedbackBox from "./components/FeedbackBox";
+import QueueGrid from "./components/QueueGrid";
+import RejectDialog from "./components/RejectDialog";
 import MemoryPanel from "./components/MemoryPanel";
 import * as api from "@/lib/api";
-import type { Listing, Preference } from "@/lib/types";
+import type { Preference, QueueItem } from "@/lib/types";
 
 const USER_ID = "u_demo";
-const CATEGORY = "chair";
 
 export default function HomePage() {
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
   const [explanation, setExplanation] = useState<string>("");
   const [preferences, setPreferences] = useState<Preference[]>([]);
-  const [lastQuery, setLastQuery] = useState<string>("");
-  const [searching, setSearching] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [rejecting, setRejecting] = useState<QueueItem | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const refreshPreferences = useCallback(async () => {
     const { preferences } = await api.getPreferences(USER_ID);
     setPreferences(preferences);
   }, []);
 
-  const doSearch = useCallback(async (query: string) => {
-    setSearching(true);
-    setLastQuery(query);
+  const doScan = useCallback(async () => {
+    setScanning(true);
     try {
-      const res = await api.search(USER_ID, query);
-      setListings(res.results);
+      const res = await api.scan(USER_ID);
+      setQueue(res.queue);
       setExplanation(res.explanation);
     } finally {
-      setSearching(false);
+      setScanning(false);
     }
   }, []);
 
-  const doFeedback = useCallback(
-    async (note: string) => {
-      await api.sendFeedback(USER_ID, CATEGORY, note);
+  const handleReject = useCallback((item: QueueItem) => {
+    setRejecting(item);
+  }, []);
+
+  const handleAccept = useCallback((item: QueueItem) => {
+    setBusy(true);
+    api
+      .accept(USER_ID, item.id)
+      .then(() => {
+        // Accept just removes the card from the queue locally — no memory write
+        // in the MVP. The next scan would still surface it.
+        setQueue((current) => current.filter((q) => q.id !== item.id));
+      })
+      .finally(() => setBusy(false));
+  }, []);
+
+  const handleRejectSubmit = useCallback(
+    async (item: QueueItem, note: string) => {
+      await api.reject(USER_ID, item.id, note);
       await refreshPreferences();
-      if (lastQuery) {
-        await doSearch(lastQuery);
-      }
+      await doScan();
     },
-    [lastQuery, doSearch, refreshPreferences]
+    [doScan, refreshPreferences]
   );
 
-  const newSession = useCallback(async () => {
+  const handleRescan = useCallback(async () => {
     await api.clearSession(USER_ID);
-    setListings([]);
+    setQueue([]);
     setExplanation("");
-    setLastQuery("");
     await refreshPreferences();
-  }, [refreshPreferences]);
+    await doScan();
+  }, [doScan, refreshPreferences]);
 
   useEffect(() => {
     refreshPreferences();
-  }, [refreshPreferences]);
+    doScan();
+  }, [doScan, refreshPreferences]);
 
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-[1480px] mx-auto bg-white/70 backdrop-blur rounded-[28px] shadow-2xl ring-1 ring-black/5 flex overflow-hidden min-h-[calc(100vh-3rem)]">
         <Sidebar
           preferenceCount={preferences.length}
-          onNewSession={newSession}
+          onNewSession={handleRescan}
         />
 
         <div className="flex-1 flex flex-col bg-[var(--background)]">
           <header className="px-10 pt-8 pb-6 flex items-start justify-between gap-6 border-b border-[var(--border)] bg-white">
             <div>
               <div className="text-xs text-[var(--muted)] font-medium">
-                DealScout <span className="mx-1">›</span> Search
+                DealScout <span className="mx-1">›</span> Flip queue
               </div>
               <h1 className="text-2xl font-bold mt-1">
                 Welcome back, Matthew{" "}
                 <span className="inline-block">👋</span>
               </h1>
               <p className="text-sm text-[var(--muted)] mt-1">
-                DealScout learns what you like as you go — try searching, then
-                tell it what you don&rsquo;t want.
+                DealScout scanned local listings for undervalued flips. Reject
+                anything you don&rsquo;t want to deal with — it&rsquo;ll
+                remember.
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button className="w-9 h-9 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:bg-neutral-100 transition">
+              <button
+                onClick={doScan}
+                disabled={scanning}
+                className="flex items-center gap-2 bg-white border border-[var(--border)] rounded-full px-4 py-2 text-sm font-semibold hover:bg-neutral-50 disabled:opacity-50 transition"
+              >
                 <svg
-                  width="16"
-                  height="16"
+                  width="14"
+                  height="14"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
                 >
-                  <path d="M12 3v1M12 20v1M3 12h1M20 12h1M5.6 5.6l.7.7M17.7 17.7l.7.7M5.6 18.4l.7-.7M17.7 6.3l.7-.7" strokeLinecap="round" />
-                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M3 12a9 9 0 1 0 3-6.7L3 8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M3 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </button>
-              <button className="w-9 h-9 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:bg-neutral-100 transition">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                  <path d="M10 21a2 2 0 0 0 4 0" strokeLinecap="round" />
-                </svg>
+                {scanning ? "Scanning…" : "Rescan"}
               </button>
               <span className="bg-black text-white text-xs font-semibold rounded-full px-4 py-2">
                 Demo mode
@@ -117,13 +127,14 @@ export default function HomePage() {
 
           <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 p-10">
             <div className="flex flex-col gap-6">
-              <SearchBar onSearch={doSearch} loading={searching} />
-              <ResultsGrid
-                listings={listings}
+              <QueueGrid
+                items={queue}
                 explanation={explanation}
-                loading={searching}
+                loading={scanning}
+                onReject={handleReject}
+                onAccept={handleAccept}
+                busy={busy}
               />
-              <FeedbackBox onSubmit={doFeedback} />
             </div>
 
             <div className="flex flex-col gap-6">
@@ -133,6 +144,12 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      <RejectDialog
+        item={rejecting}
+        onClose={() => setRejecting(null)}
+        onSubmit={handleRejectSubmit}
+      />
     </div>
   );
 }
@@ -150,21 +167,25 @@ function DemoTipsCard() {
           <span className="w-5 h-5 rounded-full bg-white/15 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
             1
           </span>
-          <span>Search for &ldquo;Find me a chair&rdquo;.</span>
+          <span>Open the queue — mixed categories, all undervalued.</span>
         </li>
         <li className="flex gap-3">
           <span className="w-5 h-5 rounded-full bg-white/15 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
             2
           </span>
           <span>
-            Tell DealScout &ldquo;I don&rsquo;t like blue chairs&rdquo;.
+            Reject a furniture card with{" "}
+            <span className="italic">
+              &ldquo;too much hassle to move&rdquo;
+            </span>
+            .
           </span>
         </li>
         <li className="flex gap-3">
           <span className="w-5 h-5 rounded-full bg-white/15 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
             3
           </span>
-          <span>Watch the blue cards vanish from results.</span>
+          <span>Watch all furniture vanish from the next scan.</span>
         </li>
       </ol>
     </section>
