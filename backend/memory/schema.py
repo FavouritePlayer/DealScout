@@ -6,15 +6,20 @@ from pydantic import BaseModel
 class Listing(BaseModel):
     id: str
     title: str
-    price: float
     category: str
-    color: str
+    condition: str
+    asking_price: float
+    estimated_resale_value: float
+    distance_miles: float
+    location: str
     image: str
     url: str
     description: str | None = None
-    location: str | None = None
     posted_at: str | None = None
-    attributes: dict | None = None
+    margin: float | None = None
+    margin_pct: float | None = None
+    projected_profit: float | None = None
+    classification: Literal["undervalued", "overvalued"] | None = None
 
 
 class Preference(BaseModel):
@@ -23,26 +28,27 @@ class Preference(BaseModel):
     polarity: Literal["avoid", "prefer"]
 
 
-class SearchRequest(BaseModel):
+class ScanRequest(BaseModel):
     user_id: str
-    query: str
+    radius_miles: float | None = None
 
 
-class SearchResponse(BaseModel):
-    results: list[Listing]
+class ScanResponse(BaseModel):
+    queue: list[Listing]
     explanation: str
     memory_used: list[Preference]
 
 
 class FeedbackRequest(BaseModel):
     user_id: str
-    category: str
-    note: str
+    item_id: str
+    decision: Literal["reject", "accept"]
+    note: str = ""
 
 
 class FeedbackResponse(BaseModel):
     ok: bool
-    preference_added: Preference | None
+    preference_added: Preference | None = None
 
 
 class PreferencesResponse(BaseModel):

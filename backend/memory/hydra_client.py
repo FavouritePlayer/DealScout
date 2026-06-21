@@ -35,8 +35,11 @@ class HydraMemoryClient:
             time.sleep(1)
         raise TimeoutError(f"Tenant {self.tenant_id!r} not ready after {timeout_s}s")
 
-    def remember(self, user_id: str, text: str, category: str, poll_timeout_s: float = 30.0) -> None:
-        """Ingest a stated preference and block until it's queryable.
+    def remember(
+        self, user_id: str, text: str, metadata: dict | None = None, poll_timeout_s: float = 30.0
+    ) -> None:
+        """Ingest a stated preference (e.g. a rejection reason) and block
+        until it's queryable.
 
         infer=True lets HydraDB extract structure from the raw feedback text
         rather than us pre-parsing it into fields.
@@ -50,7 +53,7 @@ class HydraMemoryClient:
                 "text": text,
                 "infer": True,
                 "user_name": user_id,
-                "metadata": {"category": category},
+                "metadata": metadata or {},
             }]),
         )
         job_ids = [r.id for r in resp.data.results]

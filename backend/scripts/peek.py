@@ -1,8 +1,7 @@
 """Sanity-check helper for the fixture loader.
 
 Run from the backend/ directory:
-    python scripts/peek.py            # peeks at the chair fixture
-    python scripts/peek.py desk       # peeks at a different category (if added)
+    python scripts/peek.py
 """
 
 import json
@@ -15,16 +14,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from data.playwright_loader import load_listings
 
 
-def main(category: str = "chair") -> None:
-    listings = load_listings(category)
+def main() -> None:
+    listings = load_listings()
 
-    print(f"Loaded {len(listings)} {category} listings")
+    print(f"Loaded {len(listings)} listings")
     print()
 
-    color_counts = Counter(listing["color"] for listing in listings)
-    print("Color distribution:")
-    for color, count in color_counts.most_common():
-        print(f"  {color:<8} {count}")
+    category_counts = Counter(listing["category"] for listing in listings)
+    print("Category distribution:")
+    for category, count in category_counts.most_common():
+        print(f"  {category:<16} {count}")
     print()
 
     print("First 2 listings:")
@@ -32,5 +31,4 @@ def main(category: str = "chair") -> None:
 
 
 if __name__ == "__main__":
-    category = sys.argv[1] if len(sys.argv) > 1 else "chair"
-    main(category)
+    main()

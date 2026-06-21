@@ -3,10 +3,10 @@ from typing import TypedDict
 
 class DealScoutState(TypedDict):
     user_id: str
-    category: str
-    raw_query: str
+    radius_miles: float | None
     memory_context: str          # raw text recalled from HydraDB, empty if none
-    listings: list[dict]
-    ranked_listings: list[dict]
+    candidates: list[dict]        # raw fixture listings
+    classified: list[dict]        # candidates + margin/margin_pct/projected_profit/classification
+    queue: list[dict]             # undervalued, memory-filtered, sorted by projected profit
     explanation: str
-    feedback: str | None
+    feedback: str | None          # raw rejection text, e.g. "too much hassle to move"

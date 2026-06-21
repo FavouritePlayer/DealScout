@@ -28,6 +28,11 @@ _MODEL = _provider["model"]
 
 _hydra = HydraMemoryClient()
 
+# Anything priced this far under its estimated resale value counts as a flip
+# worth surfacing; everything else is shown as overvalued (and filtered out
+# of the queue, but still classified so the split is visible/testable).
+MARGIN_PCT_THRESHOLD = 0.25
+
 
 def _parse_json_response(text: str) -> dict:
     # some models wrap JSON in ```json fences despite instructions not to
@@ -38,29 +43,53 @@ def _parse_json_response(text: str) -> dict:
 def retrieve_memory(state: DealScoutState) -> DealScoutState:
     memory_text = _hydra.recall(
         user_id=state["user_id"],
-        query=f"{state['category']} preferences",
+        query="flip category and condition avoid-rules",
     )
     state["memory_context"] = memory_text
     return state
 
 
-def rank_and_explain(state: DealScoutState) -> DealScoutState:
+def classify_value(state: DealScoutState) -> DealScoutState:
+    classified = []
+    for item in state["candidates"]:
+        asking = item["asking_price"]
+        margin = round(item["estimated_resale_value"] - asking, 2)
+        margin_pct = round(margin / asking, 4) if asking else 0.0
+        classification = "undervalued" if margin_pct >= MARGIN_PCT_THRESHOLD else "overvalued"
+        classified.append({
+            **item,
+            "margin": margin,
+            "margin_pct": margin_pct,
+            "projected_profit": margin,
+            "classification": classification,
+        })
+    state["classified"] = classified
+    return state
+
+
+def filter_and_rank(state: DealScoutState) -> DealScoutState:
+    undervalued = sorted(
+        (item for item in state["classified"] if item["classification"] == "undervalued"),
+        key=lambda item: item["projected_profit"],
+        reverse=True,
+    )
+
     if not state["memory_context"].strip():
-        state["ranked_listings"] = state["listings"]
-        state["explanation"] = "No stored preferences yet for this search."
+        state["queue"] = undervalued
+        state["explanation"] = "No stored preferences yet — showing every undervalued flip found."
         return state
 
-    prompt = f"""You are filtering marketplace listings based on a user's remembered preferences.
+    prompt = f"""You are filtering resale-flip candidates based on a user's remembered avoid-rules.
 
-Remembered preferences (raw, possibly unstructured): {state['memory_context']}
+Remembered rules (raw, possibly unstructured): {state['memory_context']}
 
-Listings (JSON array):
-{json.dumps(state['listings'])}
+Candidates (JSON array, already filtered to undervalued-only):
+{json.dumps(undervalued)}
 
 Return ONLY a JSON object with this exact shape, no prose:
-{{"keep_ids": [<ids of listings that do NOT violate any remembered preference>], "explanation": "<one sentence telling the user what you excluded and why, citing their own preference>"}}
+{{"keep_ids": [<ids of candidates that do NOT match any remembered avoid-rule>], "explanation": "<one sentence telling the user what you excluded and why, citing their own words>"}}
 
-If a listing's attributes clearly match something the user said they dislike or avoid, exclude its id from keep_ids."""
+If a candidate's category, condition, or other attribute clearly matches something the user said they want to avoid, exclude its id from keep_ids."""
 
     response = _llm.chat.completions.create(
         model=_MODEL,
@@ -72,7 +101,7 @@ If a listing's attributes clearly match something the user said they dislike or 
     parsed = _parse_json_response(response.choices[0].message.content)
 
     keep_ids = set(parsed["keep_ids"])
-    state["ranked_listings"] = [l for l in state["listings"] if l["id"] in keep_ids]
+    state["queue"] = [item for item in undervalued if item["id"] in keep_ids]
     state["explanation"] = parsed["explanation"]
     return state
 
@@ -80,9 +109,5 @@ If a listing's attributes clearly match something the user said they dislike or 
 def update_memory(state: DealScoutState) -> DealScoutState:
     if not state.get("feedback"):
         return state
-    _hydra.remember(
-        user_id=state["user_id"],
-        text=state["feedback"],
-        category=state["category"],
-    )
+    _hydra.remember(user_id=state["user_id"], text=state["feedback"])
     return state
