@@ -1,0 +1,83 @@
+{
+  "_note": "Snapshot of Claude Code skills available in this session. Each skill has an `enabled` boolean — flip to false to mark a skill you don't want to use on DealScout. This file is informational; it doesn't actually disable skills in the harness (that's done via settings.json / plugin config).",
+  "captured_at": "2026-06-21",
+  "skills": {
+    "core": [
+      { "name": "update-config", "description": "Configure the Claude Code harness via settings.json (hooks, permissions, env vars).", "enabled": true },
+      { "name": "keybindings-help", "description": "Customize keyboard shortcuts in ~/.claude/keybindings.json.", "enabled": true },
+      { "name": "simplify", "description": "Review changed code for reuse, quality, efficiency; fix issues found.", "enabled": true },
+      { "name": "fewer-permission-prompts", "description": "Scan transcripts and add prioritized allowlist to .claude/settings.json to reduce permission prompts.", "enabled": true },
+      { "name": "loop", "description": "Run a prompt or slash command on a recurring interval, or let the model self-pace.", "enabled": true },
+      { "name": "schedule", "description": "Create, update, list, or run scheduled remote agents (routines) on a cron schedule.", "enabled": true },
+      { "name": "claude-api", "description": "Build, debug, optimize Claude API / Anthropic SDK apps; includes prompt caching and version migrations.", "enabled": true },
+      { "name": "Frontend", "description": "Create distinctive, production-grade frontend interfaces; avoids generic AI aesthetics.", "enabled": true },
+      { "name": "init", "description": "Initialize a new CLAUDE.md file with codebase documentation.", "enabled": true },
+      { "name": "review", "description": "Review a pull request.", "enabled": true },
+      { "name": "security-review", "description": "Complete a security review of the pending changes on the current branch.", "enabled": true }
+    ],
+    "superpowers": [
+      { "name": "superpowers:using-superpowers", "description": "Establishes how to find and use skills. Invoked at conversation start.", "enabled": true },
+      { "name": "superpowers:brainstorming", "description": "Use before any creative work — explores intent, requirements, and design before implementation.", "enabled": true },
+      { "name": "superpowers:writing-plans", "description": "Use when you have a spec/requirements for a multi-step task, before touching code.", "enabled": true },
+      { "name": "superpowers:executing-plans", "description": "Execute a written plan in a separate session with review checkpoints.", "enabled": true },
+      { "name": "superpowers:subagent-driven-development", "description": "Execute implementation plans with independent tasks in the current session.", "enabled": true },
+      { "name": "superpowers:dispatching-parallel-agents", "description": "Use when facing 2+ independent tasks with no shared state or sequential dependency.", "enabled": true },
+      { "name": "superpowers:test-driven-development", "description": "Use when implementing any feature/bugfix, before writing implementation code.", "enabled": true },
+      { "name": "superpowers:systematic-debugging", "description": "Use for any bug, test failure, or unexpected behavior, before proposing fixes.", "enabled": true },
+      { "name": "superpowers:verification-before-completion", "description": "Require running verification commands and confirming output before claiming work complete.", "enabled": true },
+      { "name": "superpowers:requesting-code-review", "description": "Verify work meets requirements before merging.", "enabled": true },
+      { "name": "superpowers:receiving-code-review", "description": "Use when receiving review feedback — requires technical rigor, not performative agreement.", "enabled": true },
+      { "name": "superpowers:using-git-worktrees", "description": "Ensure an isolated workspace exists when starting feature work needing isolation.", "enabled": true },
+      { "name": "superpowers:finishing-a-development-branch", "description": "Guides completion of dev work with structured options for merge, PR, or cleanup.", "enabled": true },
+      { "name": "superpowers:writing-skills", "description": "Use when creating, editing, or verifying skills before deployment.", "enabled": true }
+    ],
+    "commit-commands": [
+      { "name": "commit-commands:commit", "description": "Create a git commit.", "enabled": true },
+      { "name": "commit-commands:commit-push-pr", "description": "Commit, push, and open a PR.", "enabled": true },
+      { "name": "commit-commands:clean_gone", "description": "Clean up local branches marked [gone] and associated worktrees.", "enabled": true }
+    ],
+    "pr-review-toolkit": [
+      { "name": "pr-review-toolkit:review-pr", "description": "Comprehensive PR review using specialized agents.", "enabled": true }
+    ],
+    "feature-dev": [
+      { "name": "feature-dev:feature-dev", "description": "Guided feature development with codebase understanding and architecture focus.", "enabled": true }
+    ],
+    "code-review": [
+      { "name": "code-review:code-review", "description": "Code review a pull request.", "enabled": true }
+    ],
+    "hookify": [
+      { "name": "hookify:hookify", "description": "Create hooks to prevent unwanted behaviors from conversation analysis or instructions.", "enabled": true },
+      { "name": "hookify:configure", "description": "Enable or disable hookify rules interactively.", "enabled": true },
+      { "name": "hookify:list", "description": "List all configured hookify rules.", "enabled": true },
+      { "name": "hookify:help", "description": "Get help with the hookify plugin.", "enabled": true },
+      { "name": "hookify:writing-rules", "description": "Guidance on hookify rule syntax and patterns.", "enabled": true }
+    ],
+    "agent-auth": [
+      { "name": "agent-auth:agent-auth", "description": "Integrate Scalekit Agent Auth into a project (OAuth flows, token storage/refresh for Gmail, Slack, Notion, Calendar).", "enabled": true },
+      { "name": "agent-auth:building-agent-mcp-server", "description": "Guides creating a Scalekit MCP server with authenticated tool access.", "enabled": true },
+      { "name": "agent-auth:production-readiness-scalekit", "description": "Structured production readiness checklist for Scalekit agent auth implementations.", "enabled": true }
+    ],
+    "frontend-design": [
+      { "name": "frontend-design:frontend-design", "description": "Guidance for distinctive, intentional visual design when building or reshaping UI.", "enabled": true }
+    ],
+    "ralph-wiggum": [
+      { "name": "ralph-wiggum:ralph-loop", "description": "Start Ralph Wiggum loop in current session.", "enabled": true },
+      { "name": "ralph-wiggum:cancel-ralph", "description": "Cancel active Ralph Wiggum loop.", "enabled": true },
+      { "name": "ralph-wiggum:help", "description": "Explain Ralph Wiggum technique and available commands.", "enabled": true }
+    ],
+    "mgrep": [
+      { "name": "mgrep:mgrep", "description": "Replacement for built-in WebSearch/Grep/Glob; use `mgrep --web` for web searches.", "enabled": true }
+    ]
+  },
+  "likely_useful_for_dealscout": [
+    "Frontend",
+    "frontend-design:frontend-design",
+    "superpowers:brainstorming",
+    "superpowers:writing-plans",
+    "superpowers:test-driven-development",
+    "superpowers:systematic-debugging",
+    "superpowers:verification-before-completion",
+    "commit-commands:commit",
+    "commit-commands:commit-push-pr"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest --version)",
+      "Bash(python -m pytest backend/tests/test_playwright_loader.py -v)",
+      "Bash(python scripts/peek.py)",
+      "Bash(npm --version)",
+      "Bash(npx --yes create-next-app@latest frontend --ts --tailwind --app --no-eslint --no-src-dir --import-alias \"@/*\" --use-npm --no-git --yes)",
+      "Bash(kill %1)",
+      "Bash(grep -E \"^\\(next|react|react-dom|tailwindcss|@tailwindcss|typescript\\)$\")"
+    ]
+  }
+}
