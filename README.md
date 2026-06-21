@@ -295,3 +295,4 @@ DealScout/
 └── demo/
     └── script.md                  # the 3-session demo script, line by line
 ```
+# DealScout
