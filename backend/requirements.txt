@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+hydradb-sdk>=2,<3
+openai
+langgraph
+python-dotenv
+pydantic

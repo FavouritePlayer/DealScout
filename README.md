@@ -75,12 +75,16 @@ State:
 ```python
 class DealScoutState(TypedDict):
     user_id: str
+    category: str
     raw_query: str
-    memory_context: list[dict]   # parsed from HydraDB query results
+    memory_context: str          # raw text recalled from HydraDB, empty if none
     listings: list[dict]
+    ranked_listings: list[dict]
     explanation: str
     feedback: str | None
 ```
+
+In practice this runs as two separate compiled graphs, not one: `search_graph` (`retrieve_memory → rank_and_explain`) and `feedback_graph` (`update_memory` only) — `update_memory` only ever runs on a feedback submission, so there's no reason to route a single graph through it on every search.
 
 ---
 
@@ -102,27 +106,33 @@ client.context.ingest(
         "text": "User does not like blue chairs.",
         "infer": True,          # let HydraDB extract the structured preference
         "user_name": user_id,
-        "metadata": "{\"category\": \"chair\"}"
+        "metadata": {"category": "chair"}   # nested object, NOT a JSON string — the API rejects a stringified metadata field
     }])
 )
 ```
 
-Retrieval is a **natural-language query**, not an exact-match filter:
+Also note: `tenant_id` must exist and be `ready_for_ingestion` *before* the first ingest/query call (`client.tenants.create()` then poll `client.tenants.status()`) — calling `ingest`/`query` against a tenant that doesn't exist yet returns a 404. This was a one-time ~0.4s setup, not a per-request cost.
+
+Retrieval is a **natural-language query**, not an exact-match filter, and requires `tenant_id` explicitly (it's easy to miss since `sub_tenant_id` feels like the scoping field):
 
 ```python
-client.query(type="memory", sub_tenant_id=user_id, query="chair color preferences")
+client.query(type="memory", tenant_id="dealscout", sub_tenant_id=user_id, query="chair color preferences")
 ```
 
-The `rank_and_explain` node parses whatever HydraDB returns (free text / extracted facts) to decide what to exclude — there's no guaranteed structured `{key, value, polarity}` row coming back, so build the filter logic to be tolerant of that (e.g. ask the LLM "given this retrieved memory text and this listing's attributes, should it be excluded?" rather than doing a literal field comparison).
+The response includes both plain `chunk_content` text and extracted graph relations (e.g. a `DISLIKES` edge from the user entity to a `"blue chairs"` concept) — there's no guaranteed structured `{key, value, polarity}` row, so the `rank_and_explain` node has the LLM reason over the retrieved text directly rather than doing a literal field comparison.
 
-**⚠️ Critical latency risk:** `context.ingest()` is asynchronous — written memories are not queryable until `indexing_status` reaches `completed` (checked via polling `context.status()`). If indexing takes more than a couple seconds, the live "say it, search again, it's gone" demo will stall or show a stale result. Mitigation:
-- Time an actual ingest→query round trip in the **first 15 minutes** of the build — this number determines whether the demo can be fully live or needs a deliberate pause ("give it a second to remember...") built into the script.
-- Have `/api/feedback` do the ingest **and** the poll-to-completion server-side, so the frontend just shows a loading state and gets back a response only once the memory is actually queryable. Don't let the frontend poll HydraDB directly.
-- If indexing latency turns out too slow to demo live, fall back to pre-ingesting the "I don't like blue chairs" memory before going on stage and just narrating the write step, then doing the query live.
+**⚠️ Confirmed latency risk (measured against the live API, not estimated):** `context.ingest()` is asynchronous — written memories are not queryable until `indexing_status` (polled via `context.status(tenant_id=..., sub_tenant_id=..., ids=[...])`, using the job ids from the ingest response) reaches `completed`. **Measured round trip: consistently 12–17 seconds**, regardless of whether it's the user's first or a later memory for that user — this is real per-ingestion processing time, not a one-time setup cost, and one early test exceeded a 15s timeout outright. The backend's poll timeout is set to 30s to avoid false failures.
+
+This is slow enough that it **will** be visible in a live demo. Mitigation, in order of preference:
+1. Script a deliberate pause after stating a preference — e.g. the presenter talks through what's happening for ~15s while the loading state shows ("remembering...") — before submitting the next search.
+2. If that breaks demo flow, pre-ingest the "I don't like blue chairs" memory before going on stage, narrate the write step as if it's happening, and only do the recall/re-search part live.
+3. Do not attempt to demo feedback→search as an instant back-to-back action without one of the above — it will stall on stage.
 
 ---
 
 ## API Contract
+
+This is the actual shape implemented in `backend/app.py` — HydraDB returns raw recalled text, not structured `{key, value, polarity}` rows, so don't build the frontend expecting that shape:
 
 ```
 POST /api/search
@@ -132,19 +142,20 @@ Response: {
     { "id": string, "title": string, "price": number, "color": string,
       "image": string, "url": string }
   ],
-  "explanation": string,      // e.g. "Excluded blue chairs based on your preference."
-  "memory_used": [ { "key": "color", "value": "blue", "polarity": "avoid" } ]
+  "explanation": string,   // e.g. "Excluded blue chairs based on your preference."
+  "memory_used": string    // raw recalled memory text, "" if none stored yet
 }
 
 POST /api/feedback
 Request:  { "user_id": string, "category": string, "note": string }
             // note = raw text, e.g. "I don't like blue chairs"
-Response: { "ok": true, "preference_added": { "key": "color", "value": "blue", "polarity": "avoid" } }
+Response: { "ok": true, "memory_text": string }   // echoes back what was stored
             // backend ingests into HydraDB AND polls indexing to completion
-            // before responding — frontend just awaits this call, no separate polling
+            // before responding — takes ~12-17s, see latency note above.
+            // frontend just awaits this call, no separate polling
 
 GET /api/preferences/:user_id
-Response: { "preferences": [ ... ] }   // drives the live Memory Panel
+Response: { "preferences": string }   // raw recalled text, drives the live Memory Panel
 ```
 
 ---
@@ -191,7 +202,7 @@ If you're unsure whether to spend remaining time on a P1 item or start polishing
 A few things worth knowing before you start on the frontend/fixture side:
 
 - **Don't wait on the backend.** Build the UI against the API contract above using a local mock (a couple of Next.js API routes returning fake data is enough) so you're never blocked on me finishing HydraDB/LangGraph integration. Swap the mock for the real `/api/*` calls at the integration checkpoint.
-- **The `/api/feedback` call may not be instant.** HydraDB's write path is asynchronous — the backend has to poll until indexing completes before it can respond, so this request could take a few seconds. Give the feedback box a visible "remembering..." / loading state rather than assuming an immediate response. If it ends up being more than a couple seconds, flag it to me — we may need to script a deliberate pause into the demo.
+- **The `/api/feedback` call is NOT fast — budget for ~12–17 seconds.** This is measured against the live HydraDB API, not a guess: the backend has to poll until indexing completes before it can respond, and that consistently takes 12–17s regardless of how many memories the user already has. Build the feedback box around this from the start — a real "remembering..." loading state, not a spinner that's only there "just in case." The demo script needs to account for this pause explicitly (see README's HydraDB Data Model section for the planned mitigation), so don't treat it as something to optimize away.
 - **Color is the whole demo** — make sure every fixture listing has a clear `color` field and that it's visually obvious on the card (not just in text), since the entire judging moment is "blue chairs visibly disappear."
 - **The Memory Panel matters more than visual polish.** If you're short on time, a plain list of `GET /api/preferences/:user_id` results that updates after feedback is submitted is worth more than a nicer-looking results grid.
 - **Playwright is just a fixture loader here** — a thin wrapper that reads `chairs_fixture.json` and returns it is enough to satisfy the stack requirement. Don't spend any time on a real scraper.
@@ -226,7 +237,7 @@ Owns: static listing fixture (write ~15–20 chair listings by hand or have an a
 | Risk | Mitigation |
 |---|---|
 | HydraDB integration takes longer than expected | Get a trivial write/read working in the first 15 minutes before building the graph on top of it |
-| HydraDB's async indexing is too slow to demo live (write→query round trip) | Measure this in the first 15 minutes; if slow, script a deliberate pause or pre-ingest before going on stage (see HydraDB Data Model section) |
+| HydraDB's async indexing is too slow to demo live (write→query round trip) | **Confirmed, not hypothetical: measured at 12–17s consistently.** Script a deliberate ~15s pause after stating a preference (presenter narrates while the loading state shows), or pre-ingest before going on stage and only demo the recall live (see HydraDB Data Model section) |
 | HydraDB query returns unstructured text instead of a clean field to filter on | Have the LLM reason over the retrieved memory text directly when deciding to exclude a listing, rather than expecting an exact structured field match |
 | Preference extraction misparses feedback (e.g. extracts "chair" instead of "blue") | Keep the feedback prompt narrow — for the demo, the user's phrasing is known in advance, so the extraction prompt can be tuned specifically against it before rehearsal |
 | Filtering down-ranks instead of fully excluding | Test this explicitly — the demo's entire visual impact depends on blue chairs being **absent**, not just lower on the page |
