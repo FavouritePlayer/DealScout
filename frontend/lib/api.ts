@@ -1,33 +1,53 @@
 import type {
   FeedbackResponse,
   PreferencesResponse,
-  SearchResponse,
+  ScanResponse,
 } from "./types";
 
-export async function search(
-  userId: string,
-  query: string
-): Promise<SearchResponse> {
-  const res = await fetch("/api/search", {
+export async function scan(userId: string): Promise<ScanResponse> {
+  const res = await fetch("/api/scan", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ user_id: userId, query }),
+    body: JSON.stringify({ user_id: userId }),
   });
-  if (!res.ok) throw new Error(`search failed: ${res.status}`);
+  if (!res.ok) throw new Error(`scan failed: ${res.status}`);
   return res.json();
 }
 
-export async function sendFeedback(
+export async function reject(
   userId: string,
-  category: string,
+  itemId: string,
   note: string
 ): Promise<FeedbackResponse> {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ user_id: userId, category, note }),
+    body: JSON.stringify({
+      user_id: userId,
+      item_id: itemId,
+      decision: "reject",
+      note,
+    }),
   });
-  if (!res.ok) throw new Error(`feedback failed: ${res.status}`);
+  if (!res.ok) throw new Error(`reject failed: ${res.status}`);
+  return res.json();
+}
+
+export async function accept(
+  userId: string,
+  itemId: string
+): Promise<FeedbackResponse> {
+  const res = await fetch("/api/feedback", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      item_id: itemId,
+      decision: "accept",
+      note: "",
+    }),
+  });
+  if (!res.ok) throw new Error(`accept failed: ${res.status}`);
   return res.json();
 }
 
