@@ -1,100 +1,137 @@
 # DealScout
 
-**A memory-powered marketplace agent built for the Agents You Love Hackathon.**
+**A memory-powered resale-arbitrage agent built for the Agents You Love Hackathon.**
 
 > Theme: *Context over Amnesia — Building Agents that Remember and Evolve*
 
-DealScout finds listings on a marketplace and gets better at finding *your* kind of listing every time you use it. Preferences aren't set in a settings menu — they're stated in plain language, extracted automatically, and stored in **HydraDB**, then pulled back out on every future search to change what gets shown.
+DealScout doesn't help you search for one specific thing to buy and keep. It scans listings near you, flags the ones priced **below what they're actually worth**, and queues them up as flip opportunities — projected resale value, projected profit, all of it. You review the queue and reject what you don't want to deal with ("I don't flip furniture, it's a pain to move"). DealScout remembers that, and every future scan quietly excludes that whole category before you ever see it — no settings menu, no re-stating yourself.
 
 The judging bar: a chatbot with a vector store bolted on doesn't count. The memory has to be load-bearing — remove it and the product breaks.
-
-**Build window: 3 hours.** Everything in this doc is scoped to that, not the original 8-hour plan.
 
 ---
 
 ## The Demo (this is the whole product)
 
-Category for the demo: **chairs**. Listings vary by color (blue, green, black, red, etc.) — color is the attribute the demo hangs on because it's instantly visible to judges with zero explanation needed.
+Not a single-category search. The queue spans categories — furniture, electronics, tools, collectibles, whatever — because the product is "find anything worth flipping," not "find a chair."
 
 | Step | What happens |
 |---|---|
-| 1. Search | User: *"Find me a chair."* Agent reports back a mixed set of listings — blue, green, black, red chairs all present. |
-| 2. Feedback | User: *"I don't like blue chairs."* Agent confirms and writes this to HydraDB. |
-| 3. Switch session | User clicks "New Session" (or just asks again later) — no preference is re-stated. |
-| 4. Search again | User: *"Find me a chair."* Agent returns **only green/black/etc. chairs — blue is omitted entirely** — and says so: *"I've excluded blue chairs since you mentioned you don't like them."* |
+| 1. Scan | Agent scans listings near the user, classifies each as **undervalued** or **overvalued** (asking price vs. estimated resale value), and returns a ranked queue of undervalued items with projected profit. The queue is visibly mixed — furniture, electronics, tools, etc. |
+| 2. Reject with a reason | User rejects an item: *"I don't deal with furniture, it's too much hassle to move."* Agent writes this to HydraDB. |
+| 3. Rescan / new session | User clicks "Rescan" (or comes back later) — no preference is re-stated. |
+| 4. Scan again | Agent returns a queue with **every furniture item excluded entirely** — and says so: *"Excluded furniture listings since you mentioned moving them is too much hassle."* |
 
-That's the entire demo. The proof points for judges:
-- The agent **remembers** ("I don't like blue chairs" was never repeated).
-- It **retrieves autonomously** (nothing in the second query mentions color).
-- It **changes behavior** (blue chairs are gone from the results, not just down-ranked).
+Same three proof points as any memory demo, just on a more interesting product:
+- The agent **remembers** (the rejection reason was never repeated).
+- It **retrieves autonomously** (nothing in the rescan mentions furniture).
+- It **changes behavior** (furniture is gone from the queue, not just down-ranked).
 
-A live **Memory Panel** in the UI showing the stored preference (`avoid: color = blue`) updating in real time is the cheapest, highest-impact proof of all of this — build it even before polishing anything else.
+A live **Memory Panel** showing the stored rule (`avoid: category = furniture`) updating in real time is the cheapest, highest-impact proof of this — build it before polishing anything else.
 
 ---
 
-## Architecture (simplified for 3 hours)
+## Architecture
 
 ```
-User Query
+Scan Request (user_id, radius)
     │
     ▼
-LangGraph Agent (3 nodes)
+LangGraph Agent
     │
-    ├─ retrieve_memory ──▶ HydraDB: preferences for "chair"
+    ├─ retrieve_memory ──▶ HydraDB: this user's avoid/prefer rules
     │
     ▼
 Static Listing Fixture (no live scraping — see below)
     │
     ▼
-rank_and_explain ──▶ filters out anything matching an "avoid" preference,
-    │                 produces explanation string citing the preference
+classify_value ──▶ pure arithmetic: margin = estimated_resale_value − asking_price
+    │               classification = "undervalued" if margin_pct over threshold, else "overvalued"
     ▼
-Results ──▶ Frontend (Next.js): results grid + Memory Panel
+filter_and_rank ──▶ LLM excludes anything matching a remembered avoid-rule,
+    │                keeps only undervalued items, sorts by projected profit,
+    │                produces explanation string citing the user's own reason
+    ▼
+Queue ──▶ Frontend (Next.js): queue cards + Memory Panel
     │
     ▼
-Feedback ("I don't like blue chairs") 
+Reject ("too much hassle to move")
     │
     ▼
-update_memory ──▶ extract structured preference ──▶ write to HydraDB
+update_memory ──▶ extract structured rule ──▶ write to HydraDB
 ```
 
-**Why no live Playwright scraping:** scraping a real marketplace is the one part of this stack where debugging is unpredictable (anti-bot, DOM changes) and AI-assisted codegen doesn't help — it's trial and error against a system you don't control. None of the judging criteria require live data. A thin Playwright wrapper that "loads" a local fixture file satisfies the stack requirement without the risk; do not attempt a live scrape against a real site in this window.
+**Why no live Playwright scraping:** scraping a real marketplace is the one part of this stack where debugging is unpredictable (anti-bot, DOM changes) and AI-assisted codegen doesn't help — it's trial and error against a system you don't control. None of the judging criteria require live data. A thin Playwright wrapper that "loads" a local fixture file satisfies the stack requirement without the risk. (A separate, optional one-off proof that live scraping is *possible* exists in `backend/dev/scrape_demo.py` — it opens Craigslist, types into the real search box, and scrapes live. It is not part of this product and not wired into the app — don't build against it.)
+
+The "near you" radius is simulated: each fixture listing carries a `distance_miles` field rather than this being a real geo-search.
 
 ---
 
 ## LangGraph Workflow
 
-Three nodes, no more:
-
-1. **`retrieve_memory`** — query HydraDB (`client.query(type="memory", sub_tenant_id=user_id, query="chair color preferences")`) for anything relevant to this category.
-2. **`rank_and_explain`** — load the static listing fixture, hard-filter out anything matching an `avoid` preference (e.g. `color = blue`), then have the LLM produce a one-line `explanation` string that names the excluded attribute and ties it back to the user's own words.
-3. **`update_memory`** — on feedback, ingest the raw feedback text as a memory via `client.context.ingest(type="memory", ...)`, then **poll `client.context.status()` until `indexing_status == "completed"`** before returning — see the latency note below.
+1. **`retrieve_memory`** — query HydraDB for this user's stored avoid/prefer rules.
+2. **`classify_value`** — pure Python, no LLM: for every listing, `margin = estimated_resale_value - asking_price`, `margin_pct = margin / asking_price`. Anything over a margin_pct threshold (pick something obvious for the demo, e.g. 25%) is `"undervalued"`; everything else is `"overvalued"`.
+3. **`filter_and_rank`** — load only the `"undervalued"` listings, have the LLM exclude anything matching a remembered avoid-rule (reasoning over raw recalled text, not a structured field match — see HydraDB Data Model below), sort survivors by projected profit, and produce a one-line `explanation` citing the user's own rejection reason.
+4. **`update_memory`** — on rejection, ingest the user's raw rejection text as a memory, then **poll until indexing completes** before returning — see the latency note below.
 
 State:
 
 ```python
 class DealScoutState(TypedDict):
     user_id: str
-    category: str
-    raw_query: str
+    radius_miles: float
     memory_context: str          # raw text recalled from HydraDB, empty if none
-    listings: list[dict]
-    ranked_listings: list[dict]
+    candidates: list[dict]        # raw fixture listings
+    classified: list[dict]        # candidates + margin/margin_pct/classification
+    queue: list[dict]             # undervalued, memory-filtered, sorted by profit
     explanation: str
-    feedback: str | None
+    feedback: str | None          # raw rejection text, e.g. "too much hassle to move"
 ```
 
-In practice this runs as two separate compiled graphs, not one: `search_graph` (`retrieve_memory → rank_and_explain`) and `feedback_graph` (`update_memory` only) — `update_memory` only ever runs on a feedback submission, so there's no reason to route a single graph through it on every search.
+This runs as two separate compiled graphs, same as before: `scan_graph` (`retrieve_memory → classify_value → filter_and_rank`) and `feedback_graph` (`update_memory` only) — `update_memory` only ever runs on a rejection, so there's no reason to route a single graph through it on every scan.
+
+---
+
+## Listing / Fixture Data Model
+
+Multi-category, not just chairs — this is the part that changed most. Each fixture listing needs:
+
+```json
+{
+  "id": "f_001",
+  "title": "Mid-century walnut dresser, minor scratches",
+  "category": "furniture",
+  "condition": "good",
+  "asking_price": 80,
+  "estimated_resale_value": 240,
+  "distance_miles": 4.2,
+  "location": "Berkeley, CA",
+  "image": "https://images.dealscout.demo/f_001.jpg",
+  "url": "https://example-marketplace.com/listing/f_001",
+  "description": "...",
+  "posted_at": "2026-06-18T14:22:00Z"
+}
+```
+
+**Fixed vocabulary, picked because they're what the demo's memory rules hang on:**
+- `category`: `furniture | electronics | tools | collectibles | sporting_goods | appliances | instruments | clothing | toys | books | other`
+- `condition`: `like new | good | fair | needs repair`
+
+**Curate the numbers deliberately, don't randomize them.** The demo's entire visual impact depends on:
+- Several listings being *obviously* great flips (asking price well under estimated value — e.g. 60–70% margin) spread across at least 3–4 different categories, so a category-based rejection visibly removes multiple cards from the queue, the same way "blue chairs" did.
+- Several listings being *obviously* bad flips (asking price near or above estimated value) so the `classify_value` step has real negatives to filter out — don't make everything undervalued, that makes the classification step meaningless to demo.
+- `estimated_resale_value` should be defensible at a glance (a judge skimming it shouldn't think "that's made up") — base it on roughly realistic resale prices for that kind of item, not arbitrary multipliers.
+
+~20–25 listings across at least 5 categories is enough. `margin`/`margin_pct`/`classification` are **derived by the backend**, not stored in the fixture — the fixture only supplies `asking_price` and `estimated_resale_value`.
 
 ---
 
 ## HydraDB Data Model
 
-HydraDB v2 is **not** a generic document store — it's a memory/knowledge graph with a `tenant_id` / `sub_tenant_id` model. Map it onto our use case as:
+Unchanged from the integration that's already built and verified — only the *content* of what gets stored is more general now (any rejection reason, not just color).
 
 - `tenant_id = "dealscout"` (one tenant for the whole app)
-- `sub_tenant_id = user_id` (each user's memories are scoped/partitioned here)
-- One memory per stated preference, written as natural-language text, **not** a structured row:
+- `sub_tenant_id = user_id` (each user's rules are scoped/partitioned here)
+- One memory per rejection, written as natural-language text:
 
 ```python
 client.context.ingest(
@@ -103,77 +140,74 @@ client.context.ingest(
     sub_tenant_id=user_id,
     upsert=True,
     memories=json.dumps([{
-        "text": "User does not like blue chairs.",
-        "infer": True,          # let HydraDB extract the structured preference
+        "text": "User doesn't want furniture, too much hassle to move.",
+        "infer": True,
         "user_name": user_id,
-        "metadata": {"category": "chair"}   # nested object, NOT a JSON string — the API rejects a stringified metadata field
+        "metadata": {"category": "furniture"}   # nested object, not a JSON string
     }])
 )
 ```
 
-Also note: `tenant_id` must exist and be `ready_for_ingestion` *before* the first ingest/query call (`client.tenants.create()` then poll `client.tenants.status()`) — calling `ingest`/`query` against a tenant that doesn't exist yet returns a 404. This was a one-time ~0.4s setup, not a per-request cost.
+Tenant must exist and be `ready_for_ingestion` before the first ingest/query call (one-time ~0.4s setup, already handled in `HydraMemoryClient._ensure_tenant()`).
 
-Retrieval is a **natural-language query**, not an exact-match filter, and requires `tenant_id` explicitly (it's easy to miss since `sub_tenant_id` feels like the scoping field):
+Retrieval is a natural-language query, requires `tenant_id` explicitly:
 
 ```python
-client.query(type="memory", tenant_id="dealscout", sub_tenant_id=user_id, query="chair color preferences")
+client.query(type="memory", tenant_id="dealscout", sub_tenant_id=user_id, query="flip category and condition preferences")
 ```
 
-The response includes both plain `chunk_content` text and extracted graph relations (e.g. a `DISLIKES` edge from the user entity to a `"blue chairs"` concept) — there's no guaranteed structured `{key, value, polarity}` row, so the `rank_and_explain` node has the LLM reason over the retrieved text directly rather than doing a literal field comparison.
+The response is free text plus extracted graph relations — there's no guaranteed structured row, so `filter_and_rank` has the LLM reason over the retrieved text directly against each listing's attributes, same pattern as before.
 
-**⚠️ Confirmed latency risk (measured against the live API, not estimated):** `context.ingest()` is asynchronous — written memories are not queryable until `indexing_status` (polled via `context.status(tenant_id=..., sub_tenant_id=..., ids=[...])`, using the job ids from the ingest response) reaches `completed`. **Measured round trip: consistently 12–17 seconds**, regardless of whether it's the user's first or a later memory for that user — this is real per-ingestion processing time, not a one-time setup cost, and one early test exceeded a 15s timeout outright. The backend's poll timeout is set to 30s to avoid false failures.
+**⚠️ Confirmed latency risk (measured against the live API):** `context.ingest()` is asynchronous — a rejection isn't queryable until indexing completes. **Measured round trip: consistently 12–17 seconds.** This is real per-ingestion processing time, not a one-time cost, and will be visible in a live demo. Mitigation, in order of preference:
+1. Script a deliberate ~15s pause after a rejection — presenter narrates while the loading state shows ("remembering...") — before triggering the rescan.
+2. If that breaks flow, pre-ingest the rejection before going on stage, narrate the write step, and only demo the rescan live.
+3. Do not attempt rejection→rescan as an instant back-to-back action without one of the above.
 
-This is slow enough that it **will** be visible in a live demo. Mitigation, in order of preference:
-1. Script a deliberate pause after stating a preference — e.g. the presenter talks through what's happening for ~15s while the loading state shows ("remembering...") — before submitting the next search.
-2. If that breaks demo flow, pre-ingest the "I don't like blue chairs" memory before going on stage, narrate the write step as if it's happening, and only do the recall/re-search part live.
-3. Do not attempt to demo feedback→search as an instant back-to-back action without one of the above — it will stall on stage.
+`HydraMemoryClient` also has `forget_all(user_id)` (list-then-delete-by-id, since HydraDB has no bulk delete-by-user call) for a working "clear my preferences" reset.
 
 ---
 
 ## API Contract
 
-This is the actual shape implemented in `backend/app.py`, reconciled with the frontend's existing `frontend/lib/types.ts`. HydraDB itself returns raw recalled text, not structured rows — `backend/memory/preference_parser.py` is a thin heuristic adapter at the API boundary that converts that raw text into the `{key, value, polarity}` shape the frontend already expects, so no frontend changes were needed to integrate:
-
 ```
-POST /api/search
-Request:  { "user_id": string, "query": string }
+POST /api/scan
+Request:  { "user_id": string, "radius_miles"?: number }
 Response: {
-  "results": [
-    { "id": string, "title": string, "price": number, "category": string, "color": string,
-      "image": string, "url": string, "description"?: string, "location"?: string,
-      "posted_at"?: string, "attributes"?: object }
+  "queue": [
+    { "id": string, "title": string, "category": string, "condition": string,
+      "asking_price": number, "estimated_resale_value": number,
+      "projected_profit": number, "margin_pct": number, "classification": "undervalued",
+      "distance_miles": number, "location": string, "image": string, "url": string,
+      "description"?: string, "posted_at"?: string }
   ],
-  "explanation": string,                 // e.g. "Excluded blue chairs based on your preference."
-  "memory_used": [ { "key": "color", "value": "blue", "polarity": "avoid" } ]
+  "explanation": string,                 // e.g. "Excluded furniture since you said moving it is too much hassle."
+  "memory_used": [ { "key": "category", "value": "furniture", "polarity": "avoid" } ]
 }
 
 POST /api/feedback
-Request:  { "user_id": string, "category": string, "note": string }
-            // note = raw text, e.g. "I don't like blue chairs"
-Response: { "ok": true, "preference_added": { "key": "color", "value": "blue", "polarity": "avoid" } | null }
-            // backend ingests into HydraDB AND polls indexing to completion
-            // before responding — takes ~12-17s, see latency note above.
-            // frontend just awaits this call, no separate polling
+Request:  { "user_id": string, "item_id": string, "decision": "reject" | "accept", "note": string }
+            // note = raw rejection text, e.g. "I don't deal with furniture, too much hassle to move"
+Response: { "ok": true, "preference_added": { "key": string, "value": string, "polarity": "avoid" | "prefer" } | null }
+            // backend ingests into HydraDB AND polls indexing to completion before responding
+            // — takes ~12-17s, see latency note above. Frontend just awaits this call.
 
 GET /api/preferences/:user_id
-Response: { "preferences": [ { "key": "color", "value": "blue", "polarity": "avoid" }, ... ] }
+Response: { "preferences": [ { "key": string, "value": string, "polarity": "avoid" | "prefer" }, ... ] }
 
 DELETE /api/preferences/:user_id
-Response: { "ok": true }
-            // wipes all stored memories for this user in HydraDB (list-then-delete-by-id,
-            // since HydraDB has no bulk delete-by-user call) — used by "New Session"
+Response: { "ok": true }    // wipes all stored memories for this user — used by "Rescan from scratch" / reset
 ```
 
-**Scope note:** `preference_parser.py` only extracts color preferences with "avoid" polarity (matching what `frontend/lib/mockStore.ts`'s `parsePreferenceFromNote` already handled) — this is intentionally narrow to the chair-color demo, not a general preference extractor.
+`key` is generalized beyond color now — expect at least `category` and `condition` as keys the parser/LLM can produce, since those are the two attributes the fixture's vocabulary supports and the ones a rejection reason will most often map to.
 
 ---
 
 ## Frontend (Next.js, single page)
 
-- Search bar + results grid (each card shows title, price, color, image).
-- Free-text feedback box under the results → `POST /api/feedback`.
+- **Queue view**, not a search bar — a grid/list of flip-candidate cards. Each card needs: title, category + condition tags, asking price, estimated resale value, **projected profit** (this is the headline number — make it the most visually prominent thing on the card), distance, image.
+- **Reject / Accept controls** on each card. Reject should prompt for a short reason (free text) → `POST /api/feedback`. Accept can just dismiss the card from the local queue view (no memory write needed for accepts in the MVP).
 - **Memory Panel** (always visible, sidebar) — live `GET /api/preferences/:user_id`, refreshed after every feedback submission. This is the visual proof of memory for judges.
-- "New Session" button that just clears local UI state and re-runs the same search — proves the preference came from HydraDB, not from chat context still sitting in memory client-side.
+- **"Rescan"** button — re-runs `POST /api/scan` for the same user, proving the exclusion came from HydraDB, not local UI state.
 
 No multi-page flow, no auth, no account system.
 
@@ -181,62 +215,50 @@ No multi-page flow, no auth, no account system.
 
 ## P0 / P1 / P2
 
-**P0 — the only thing that has to exist; this is the 3-hour scope:**
-- Static fixture of ~15–20 chair listings with varied colors
-- `retrieve_memory → rank_and_explain → update_memory` graph wired end to end
-- Search → results shown, mixed colors
-- Feedback text → preference extracted and written to HydraDB
-- Repeat search → matching color fully excluded, not just down-ranked
-- Explanation string that names the excluded attribute
-- Memory Panel showing the live preference
+**P0 — the only thing that has to exist:**
+- Static fixture of ~20–25 multi-category listings, with `asking_price` / `estimated_resale_value` curated so some are obviously great flips and some obviously aren't (see Listing Data Model above)
+- `retrieve_memory → classify_value → filter_and_rank` graph wired end to end
+- Scan → queue shown, mixed categories, mixed undervalued/overvalued
+- Reject-with-reason → rule extracted and written to HydraDB
+- Rescan → matching category (or condition) fully excluded from the queue, not just down-ranked
+- Explanation string that names what was excluded and why
+- Memory Panel showing the live rule
 
-**P1 — only after P0 works end to end, in whatever time is left:**
-- A second preference type beyond color (e.g. price ceiling) to show memory generalizes
-- "New Session" button polish + clean re-run flow for staging the demo
-- Explanation wording pass (make it sound natural, cite the user's own phrase back)
+**P1 — only after P0 works end to end:**
+- A second rule type beyond category (e.g. condition, or a distance ceiling) to show memory generalizes across attributes
+- "Rescan" polish + clean re-run flow for staging the demo
+- Explanation wording pass (cite the user's own phrase back naturally)
 
-**P2 — only attempt if P0 and P1 are both done with real time to spare; do not start these inside the 3-hour window unless explicitly re-scoped:**
-- A second category
-- Inferring a preference from repeated dislikes without an explicit statement
+**P2 — only attempt if P0 and P1 are both done with real time to spare:**
+- Real geo-radius instead of a static `distance_miles` field
+- Inferring a rule from repeated rejections without an explicit stated reason
 - Live scraping replacing the static fixture
-- Multiple simultaneous preferences with conflict resolution
+- Multiple simultaneous rules with conflict resolution
+- Accept flow actually mattering (e.g. feeding "prefer" rules back into ranking)
 
-If you're unsure whether to spend remaining time on a P1 item or start polishing UI cosmetics, do the P1 item — judges are scoring memory behavior, not visual design.
+If unsure whether to spend time on a P1 item vs. polishing visuals, do the P1 item — judges are scoring memory behavior, not visual design.
 
 ---
 
 ## Note to Person B (from Person A)
 
-**Update: backend integration is done.** The frontend's existing mock contract (`frontend/lib/types.ts`, `frontend/lib/mockStore.ts`) is now exactly what the real backend returns — `backend/memory/preference_parser.py` was added specifically to match your `Preference {key, value, polarity}` shape and `parsePreferenceFromNote` logic, so no frontend changes should be needed to swap from mocks to the real API. `backend/app.py` now also reads your real `backend/data/chairs_fixture.json` via `playwright_loader.load_listings("chair")` instead of a placeholder, and a `DELETE /api/preferences/:user_id` endpoint was added to back your "New Session" button (it actually clears HydraDB memory now, not just local mock state).
+This is a product pivot, not an incremental change — previous notes about a chair search bar / single-color filtering no longer apply. Here's what's concretely needed from you now:
 
-To switch the frontend from mocks to the real backend: point `frontend/lib/api.ts`'s `fetch()` calls at the running FastAPI server (`http://localhost:8000` by default) instead of the local Next.js API routes, or proxy through them — either works since the JSON shapes already match.
-
-Things still worth knowing:
-- **The `/api/feedback` call is NOT fast — budget for ~12–17 seconds**, confirmed against the live HydraDB API. Your mock already simulates this with a 900ms delay; the real one is ~15x slower, so re-test the loading state against the real backend before the final rehearsal.
-- **Playwright is just a fixture loader here**, exactly as you built it — no real scraping needed for the submission. (Separately, on request, a one-off live Playwright scrape against Craigslist was built in `backend/dev/scrape_demo.py` just to prove it's possible — it's not wired into the app and doesn't affect your fixture-based plan.)
+- **New fixture, replacing `chairs_fixture.json`.** Needs ~20–25 listings across at least 5 categories (see the fixed `category`/`condition` vocab and curation guidance in the Listing / Fixture Data Model section above — the numbers need to be deliberately picked, not randomized, or the demo's "undervalued vs overvalued" split won't read as real). Keep the file name pattern your `playwright_loader.py` already expects, or let me know if you want to change that contract.
+- **New frontend: queue of cards, not a search bar.** Each card's headline number is projected profit — that's the entire pitch of the product, make it visually loud. Reject needs a reason-capture input (even a single text field is enough) since that text is what becomes the remembered rule.
+- **Memory Panel and Rescan button carry over conceptually** from the old design, just pointed at the new contract above (`key` is now `category`/`condition` instead of always `color`).
+- **The `/api/feedback` call is still ~12–17 seconds** — same constraint as before, just confirming it's not different in the new flow. Keep the loading state.
+- Once you've got the new fixture and UI scaffolded against this contract (mock it locally first, same as before), ping me and I'll wire the real backend the same way I did last time — that integration step went smoothly because the contract was agreed up front, so let's keep doing that.
 
 ---
 
-## Two-Person Split (3 hours)
-
-Same ownership split as before, just scoped down. Lock the API contract first so both people build against it independently rather than against each other's code.
+## Two-Person Split
 
 ### Person A — Agent & Memory
-Owns: LangGraph graph, HydraDB client + schema, preference extraction, ranking/filtering, explanation generation, backend API.
+Owns: LangGraph graph (`retrieve_memory`, `classify_value`, `filter_and_rank`, `update_memory`), HydraDB client + schema, rule extraction, valuation/classification logic, backend API.
 
 ### Person B — Data & Frontend
-Owns: static listing fixture (write ~15–20 chair listings by hand or have an agent generate them), Next.js UI (search, results grid, feedback box, Memory Panel), thin Playwright wrapper that loads the fixture (to satisfy the stack requirement without live scraping).
-
-### Timeline
-
-| Time | Milestone |
-|---|---|
-| 0:00–0:15 | Lock API contract + `preferences` schema together |
-| 0:15–1:15 | Parallel: A builds graph + HydraDB + ranking against mocked listings; B builds fixture + UI against mocked API responses |
-| 1:15–1:45 | **Checkpoint**: wire real backend to real frontend |
-| 1:45–2:30 | Parallel: A tunes explanation text; B builds Memory Panel + "New Session" flow |
-| 2:30–2:45 | **Checkpoint**: full loop test — search, state "I don't like blue chairs," search again, confirm blue is gone |
-| 2:45–3:00 | Rehearse the demo exactly as it will be shown |
+Owns: new multi-category listing fixture, Next.js queue UI (cards, reject/accept, Memory Panel, Rescan), thin Playwright wrapper that loads the fixture (already built, just needs to keep working against the new fixture).
 
 ---
 
@@ -244,12 +266,12 @@ Owns: static listing fixture (write ~15–20 chair listings by hand or have an a
 
 | Risk | Mitigation |
 |---|---|
-| HydraDB integration takes longer than expected | Get a trivial write/read working in the first 15 minutes before building the graph on top of it |
-| HydraDB's async indexing is too slow to demo live (write→query round trip) | **Confirmed, not hypothetical: measured at 12–17s consistently.** Script a deliberate ~15s pause after stating a preference (presenter narrates while the loading state shows), or pre-ingest before going on stage and only demo the recall live (see HydraDB Data Model section) |
-| HydraDB query returns unstructured text instead of a clean field to filter on | Have the LLM reason over the retrieved memory text directly when deciding to exclude a listing, rather than expecting an exact structured field match |
-| Preference extraction misparses feedback (e.g. extracts "chair" instead of "blue") | Keep the feedback prompt narrow — for the demo, the user's phrasing is known in advance, so the extraction prompt can be tuned specifically against it before rehearsal |
-| Filtering down-ranks instead of fully excluding | Test this explicitly — the demo's entire visual impact depends on blue chairs being **absent**, not just lower on the page |
-| Running short on time | Cut P1 items first, never cut the Memory Panel — it's the single highest-leverage thing in the demo |
+| HydraDB's async indexing is too slow to demo live (write→query round trip) | **Confirmed at 12–17s.** Script a deliberate pause, or pre-ingest before going on stage and only demo the rescan live |
+| Fixture's `estimated_resale_value` numbers look made up to judges | Curate, don't randomize — base them on defensible, roughly-realistic resale prices; keep a clear gap between "obvious flip" and "obvious bad deal" listings |
+| `classify_value` threshold makes everything (or nothing) "undervalued" | Pick a margin_pct threshold against the actual curated fixture data and verify the split looks reasonable before building anything on top of it |
+| Rule extraction misparses a rejection reason (e.g. extracts the wrong category) | Keep the demo's rejection phrasing known in advance and tune the extraction prompt specifically against it before rehearsal |
+| Filtering down-ranks instead of fully excluding | Test explicitly — the demo's visual impact depends on rejected-category items being **absent**, not just lower in the queue |
+| Running short on time | Cut P1 items first, never cut the Memory Panel |
 
 ---
 
@@ -259,26 +281,30 @@ Owns: static listing fixture (write ~15–20 chair listings by hand or have an a
 DealScout/
 ├── README.md
 ├── backend/
-│   ├── app.py                      # API server (Person A)
+│   ├── app.py                       # API server (Person A)
 │   ├── graph/
 │   │   ├── state.py
-│   │   ├── nodes.py                 # retrieve_memory, rank_and_explain, update_memory
+│   │   ├── nodes.py                  # retrieve_memory, classify_value, filter_and_rank, update_memory
 │   │   └── graph.py
 │   ├── memory/
 │   │   ├── hydra_client.py
+│   │   ├── preference_parser.py
 │   │   └── schema.py
-│   └── data/
-│       ├── chairs_fixture.json       # Person B
-│       └── playwright_loader.py      # thin wrapper, loads fixture
+│   ├── data/
+│   │   ├── listings_fixture.json      # Person B — new multi-category fixture
+│   │   └── playwright_loader.py       # thin wrapper, loads fixture
+│   └── dev/
+│       ├── demo_cli.py                 # terminal proof of the memory loop
+│       └── scrape_demo.py              # optional: proves live scraping is possible, not wired in
 ├── frontend/
 │   ├── app/
 │   │   ├── page.tsx
 │   │   └── components/
 │   │       ├── MemoryPanel.tsx
-│   │       ├── ListingCard.tsx
-│   │       └── FeedbackBox.tsx
+│   │       ├── QueueCard.tsx
+│   │       └── RejectDialog.tsx
 │   └── lib/
 │       └── api.ts
 └── demo/
-    └── script.md                     # the exact lines to say/type during the demo
+    └── script.md                      # the exact lines to say/type during the demo
 ```
